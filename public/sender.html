@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PC Sender</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg,#1e1e2e,#313244); color: #cdd6f4; margin: 0; padding: 24px; display: flex; justify-content: center; }
+    .card { background: #181825; border-radius: 16px; padding: 28px; width: 100%; max-width: 520px; box-shadow: 0 8px 30px rgba(0,0,0,.4); }
+    h2 { margin-top: 0; color: #89b4fa; }
+    label { font-size: 13px; color: #a6adc8; }
+    select, input { padding: 12px; width: 100%; border-radius: 10px; border: 1px solid #45475a; background: #1e1e2e; color: #cdd6f4; margin: 8px 0 16px; font-size: 14px; }
+    button { background: #89b4fa; color: #1e1e2e; border: none; padding: 13px 20px; border-radius: 10px; font-size: 15px; font-weight: 600; margin: 4px 4px 4px 0; cursor: pointer; transition: .2s; }
+    button:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; }
+    button.stop { background: #f38ba8; color: #1e1e2e; }
+    #log { background: #11111b; padding: 12px; border-radius: 10px; white-space: pre-wrap; font-size: 13px; margin-top: 16px; min-height: 60px; color: #a6e3a1; }
+    .idbox { background: #1e1e2e; border: 1px dashed #89b4fa; border-radius: 10px; padding: 14px; text-align: center; font-size: 20px; letter-spacing: 2px; margin: 12px 0; color: #f9e2af; word-break: break-all; }
+    .row { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+    .qr { text-align: center; }
+    .qr img { border-radius: 12px; background: white; padding: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>🔊 PC → Phone Audio</h2>
+    <label>Select audio source (system audio = "Monitor of ...", mics also listed):</label>
+    <select id="devices"></select>
+    <button id="refresh">↻ Refresh list</button>
+    <br>
+    <button id="start">▶ Start Streaming</button>
+    <button id="stop" class="stop" disabled>■ Stop</button>
+    <div id="peerid" class="idbox" style="display:none"></div>
+    <div class="row">
+      <div id="log" style="flex:1; min-width:200px"></div>
+      <div class="qr">
+        <p style="font-size:12px;color:#a6adc8">Scan with phone:</p>
+        <img id="qrimg" src="/qr.png" width="150" height="150" alt="QR">
+      </div>
+    </div>
+  </div>
+  <script src="/peerjs-client/peerjs.min.js"></script>
+  <script>
+    const log = (m) => document.getElementById("log").textContent += m + "\n";
+    let stream = null, call = null, peer = null;
+
+    async function listDevices() {
+      try { await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) { log("Allow mic permission to list devices."); return; }
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      const sel = document.getElementById("devices");
+      sel.innerHTML = "";
+      devs.filter(d => d.kind === "audioinput").forEach(d => {
+        const o = document.createElement("option");
+        o.value = d.deviceId; o.textContent = d.label || ("Device " + d.deviceId.slice(0, 8));
+        sel.appendChild(o);
+      });
+      log("Found " + sel.options.length + " source(s). Pick 'Monitor of...' for system audio.");
+    }
+    document.getElementById("refresh").onclick = listDevices;
+    listDevices();
+
+    document.getElementById("start").onclick = async () => {
+      const deviceId = document.getElementById("devices").value;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false, latency: 0.01, channelCount: 2 }
+        });
+      } catch (e) { return log("Error: " + e.message); }
+      peer = new Peer(undefined, { host: location.hostname, port: location.port || 80, path: "/peerjs", secure: location.protocol === "https:" });
+      peer.on("disconnected", () => { try { peer.reconnect(); } catch (e) {} });
+      peer.on("open", (id) => {
+        const box = document.getElementById("peerid");
+        box.style.display = "block";
+        box.textContent = id;
+        if (!document.getElementById("streaming-announced")) {
+          log("Streaming ready. Scan the QR with your phone — the peer ID is already in the QR.");
+          const m = document.createElement("div");
+          m.id = "streaming-announced";
+          document.body.appendChild(m);
+        }
+        document.getElementById("qrimg").src = "/qr.png?id=" + encodeURIComponent(id) + "&t=" + Date.now();
+        window._peerId = id;
+        if (controlWs.readyState === 1) controlWs.send(JSON.stringify({ role: "sender", id }));
+      });
+      peer.on("connection", (conn) => {
+        conn.on("data", (msg) => {
+          if (msg === "hello") { call = peer.call(conn.peer, stream); log("Connected to phone ✔"); }
+        });
+      });
+      if ("wakeLock" in navigator) navigator.wakeLock.request("screen").catch(() => {});
+      document.getElementById("stop").disabled = false;
+      document.getElementById("start").disabled = true;
+    };
+
+    document.getElementById("stop").onclick = () => {
+      call && call.close(); stream && stream.getTracks().forEach(t => t.stop()); peer && peer.destroy();
+      document.getElementById("peerid").style.display = "none";
+      log("Stopped.");
+      document.getElementById("stop").disabled = true;
+      document.getElementById("start").disabled = false;
+    };
+
+    const controlWs = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.hostname + ":" + (Number(location.port) + 1) + "/control");
+    controlWs.onopen = () => controlWs.send(JSON.stringify({ role: "sender", id: (window._peerId || undefined) }));
+    controlWs.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.cmd === "stop") document.getElementById("stop").click();
+        if (msg.cmd === "status") log("Phone route: " + (msg.route || "unknown"));
+      } catch {}
+    };
+
+    setInterval(() => {
+      if (!call || !call.peerConnection) return;
+      call.peerConnection.getStats().then((report) => {
+        report.forEach((s) => {
+          if (s.type === "remote-inbound-rtp" && s.roundTripTime) {
+            log("RTT: " + Math.round(s.roundTripTime * 1000) + " ms (clear log to see live)");
+          }
+        });
+      });
+    }, 3000);
+  </script>
+</body>
+</html>

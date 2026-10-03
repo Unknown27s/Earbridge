@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phone Receiver</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg,#1e1e2e,#313244); color: #cdd6f4; margin: 0; padding: 24px; display: flex; justify-content: center; }
+    .card { background: #181825; border-radius: 16px; padding: 28px; width: 100%; max-width: 420px; box-shadow: 0 8px 30px rgba(0,0,0,.4); text-align: center; }
+    h2 { margin-top: 0; color: #a6e3a1; }
+    input { padding: 14px; width: 100%; border-radius: 10px; border: 1px solid #45475a; background: #1e1e2e; color: #cdd6f4; margin: 8px 0 16px; font-size: 16px; text-align: center; letter-spacing: 2px; }
+    button { background: #a6e3a1; color: #1e1e2e; border: none; padding: 14px 24px; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; }
+    button:disabled { background: #45475a; color: #6c7086; }
+    audio { width: 100%; margin-top: 18px; }
+    #log { background: #11111b; padding: 12px; border-radius: 10px; white-space: pre-wrap; font-size: 13px; margin-top: 16px; color: #f9e2af; text-align: left; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #f38ba8; margin-right: 6px; }
+    .dot.on { background: #a6e3a1; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>🎧 Audio Receiver</h2>
+    <p style="color:#a6adc8;font-size:13px">Pair your Bluetooth headphones first, then enter the ID from the PC page.</p>
+    <input id="peerid" placeholder="Sender peer ID">
+    <button id="connect">🔗 Connect</button>
+    <audio id="audio" autoplay playsinline controls></audio>
+    <br>
+    <button id="stopbtn" style="background:#f38ba8;margin-top:12px;width:auto;padding:10px 18px" disabled>■ Stop on PC</button>
+    <div id="log"><span class="dot" id="dot"></span>Waiting...</div>
+  </div>
+  <script src="/peerjs-client/peerjs.min.js"></script>
+  <script>
+    const setStatus = (m, on) => {
+      document.getElementById("log").innerHTML = '<span class="dot' + (on ? " on" : "") + '" id="dot"></span>' + m;
+    };
+    const params = new URLSearchParams(location.search);
+    if (params.get("id")) {
+      document.getElementById("peerid").value = params.get("id");
+      setTimeout(() => document.getElementById("connect").click(), 500);
+    } else {
+      const poll = setInterval(async () => {
+        try {
+          const r = await fetch("/sender-id");
+          const j = await r.json();
+          if (j.id) {
+            clearInterval(poll);
+            document.getElementById("peerid").value = j.id;
+            setStatus("Found PC sender — connecting...", false);
+            document.getElementById("connect").click();
+          }
+        } catch (e) {}
+      }, 2000);
+    }
+    document.getElementById("connect").onclick = () => {
+      const target = document.getElementById("peerid").value.trim();
+      if (!target) return setStatus("Enter sender ID first.", false);
+      document.getElementById("connect").disabled = true;
+      setStatus("Connecting...", false);
+      const peer = new Peer(undefined, { host: location.hostname, port: location.port || 80, path: "/peerjs", secure: location.protocol === "https:" });
+      peer.on("open", () => {
+        const conn = peer.connect(target);
+        conn.on("open", () => { conn.send("hello"); setStatus("Waiting for audio stream...", false); window._conn = conn; });
+      });
+      peer.on("disconnected", () => { try { peer.reconnect(); } catch (e) {} });
+      peer.on("call", (call) => {
+        call.answer();
+        call.on("stream", (remote) => {
+          document.getElementById("audio").srcObject = remote;
+          document.getElementById("stopbtn").disabled = false;
+          setStatus("Receiving — audio is playing to your Bluetooth headphones.", true);
+          if ("wakeLock" in navigator) navigator.wakeLock.request("screen").catch(() => {});
+          if ("mediaSession" in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({ title: "PC Audio", artist: "Phone BT Proxy" });
+          }
+          try {
+            const rec = call.peerConnection.getReceivers()[0];
+            if (rec) { rec.playoutDelayHint = 0; if ("jitterBufferTarget" in rec) rec.jitterBufferTarget = 0; }
+          } catch (e) {}
+          setInterval(() => {
+            call.peerConnection.getStats().then((report) => {
+              report.forEach((s) => {
+                if (s.type === "inbound-rtp" && s.packetsLost !== undefined) {
+                  console.log("Lost:", s.packetsLost);
+                }
+              });
+            });
+          }, 3000);
+        });
+      });
+      peer.on("error", (e) => { setStatus("Error: " + e.type, false); document.getElementById("connect").disabled = false; });
+    };
+
+    const controlWs = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.hostname + ":" + (Number(location.port) + 1) + "/control");
+    controlWs.onopen = () => controlWs.send(JSON.stringify({ role: "receiver" }));
+    document.getElementById("stopbtn").onclick = () => {
+      controlWs.send(JSON.stringify({ role: "receiver", cmd: "stop" }));
+      window._conn && window._conn.close && window._conn.close();
+      setStatus("Stopped by phone.", false);
+      document.getElementById("stopbtn").disabled = true;
+    };
+  </script>
+</body>
+</html>

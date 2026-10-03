@@ -1,0 +1,23 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+:root {
+  --bg-base: #0d0d12;
+  --card: #16161e;
+  --fill: #22222e;
+  --accent: #4ade80;
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+}
+
+body {
+  background: radial-gradient(1200px 600px at 50% -10%, #1a1a24 0%, var(--bg-base) 60%);
+  color: var(--text);
+  font-family: "Inter Variable", system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.animate-pulse-dot { animation: pulseDot 1.6s ease-in-out infinite; }
+@keyframes pulseDot { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
