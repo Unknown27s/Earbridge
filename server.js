@@ -34,7 +34,9 @@ app.get("/qr.png", async (req, res) => {
 });
 
 app.get("/receiver-url", (req, res) => {
-  res.json({ url: `http://${getLocalIP()}:${PORT}/receiver.html` });
+  let url = `http://${getLocalIP()}:${PORT}/receiver.html`;
+  if (req.query.id) url += `?id=${encodeURIComponent(req.query.id)}`;
+  res.json({ url });
 });
 
 let currentSenderId = null;

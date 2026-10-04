@@ -2,8 +2,32 @@ export function getServerBase(): string {
   return localStorage.getItem("earbridge_server") || "";
 }
 
+export function normalizeServer(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+}
+
 export function setServerBase(url: string) {
-  localStorage.setItem("earbridge_server", url.replace(/\/+$/, ""));
+  const normalized = normalizeServer(url);
+  if (normalized) localStorage.setItem("earbridge_server", normalized);
+  else localStorage.removeItem("earbridge_server");
+}
+
+export function getSavedServers(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("earbridge_servers") || "[]");
+    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function pushSavedServer(url: string) {
+  const normalized = normalizeServer(url);
+  if (!normalized) return;
+  const next = [normalized, ...getSavedServers().filter((x) => x !== normalized)].slice(0, 3);
+  localStorage.setItem("earbridge_servers", JSON.stringify(next));
 }
 
 export function base(): string {

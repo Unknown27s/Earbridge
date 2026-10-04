@@ -12,11 +12,14 @@ export default function Sender() {
   const [sourceId, setSourceId] = useState("");
   const [status, setStatus] = useState<OrbState>("idle");
   const [peerId, setPeerId] = useState<string | null>(null);
+  const [qrUrl, setQrUrl] = useState("");
   const [phoneConnected, setPhoneConnected] = useState(false);
   const [metrics, setMetrics] = useState<{ rtt: number | null; jitter: number | null; loss: number | null; bitrate: number | null }>({ rtt: null, jitter: null, loss: null, bitrate: null });
   const peerRef = useRef<Peer | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const callRef = useRef<ReturnType<Peer["call"]> | null>(null);
+  const micAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [phoneMicOn, setPhoneMicOn] = useState(false);
   const bytesRef = useRef<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -76,8 +79,23 @@ export default function Sender() {
       setStatus("connecting");
       const peer = new Peer(peerOptions());
       peerRef.current = peer;
-      peer.on("open", (id) => { setPeerId(id); setStatus("live"); });
+      peer.on("open", (id) => {
+        setPeerId(id);
+        setStatus("live");
+        fetch(`/receiver-url?id=${encodeURIComponent(id)}`)
+          .then((r) => r.json())
+          .then((j) => setQrUrl(j.url))
+          .catch(() => setQrUrl(`${base()}/receiver.html?id=${id}`));
+      });
       peer.on("connection", (conn) => conn.on("data", (msg) => { if (msg === "hello") { callRef.current = peer.call(conn.peer, stream); setPhoneConnected(true); } }));
+      peer.on("call", (call) => {
+        call.answer();
+        call.on("stream", (micStream) => {
+          if (micAudioRef.current) micAudioRef.current.srcObject = micStream;
+          setPhoneMicOn(true);
+        });
+        call.on("close", () => setPhoneMicOn(false));
+      });
       peer.on("disconnected", () => { try { peer.reconnect(); } catch {} setStatus("reconnecting"); });
       peer.on("error", () => setStatus("error"));
     } catch { setStatus("error"); }
@@ -87,7 +105,7 @@ export default function Sender() {
     callRef.current?.close();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     peerRef.current?.destroy();
-    setStatus("idle"); setPhoneConnected(false); setPeerId(null);
+    setStatus("idle"); setPhoneConnected(false); setPeerId(null); setPhoneMicOn(false);
     setMetrics({ rtt: null, jitter: null, loss: null, bitrate: null });
   }
 
@@ -114,11 +132,12 @@ export default function Sender() {
           <div className="flex flex-col items-center gap-3">
             {peerId ? (
               <>
-                <div className="rounded-2xl bg-white p-3"><QRCodeSVG value={`${base()}/receiver.html?id=${peerId}`} size={150} /></div>
+                <div className="rounded-2xl bg-white p-3"><QRCodeSVG value={qrUrl} size={150} /></div>
                 <button className="flex items-center gap-2 text-sm text-[var(--muted)]" onClick={() => navigator.clipboard.writeText(peerId)}>
                   <Copy size={14} /> {peerId.slice(0, 12)}…
                 </button>
                 {phoneConnected && <div className="text-[var(--accent)] text-sm">Phone connected ✓</div>}
+                {phoneMicOn && <div className="text-[var(--accent)] text-sm">Phone mic live ✓</div>}
               </>
             ) : (
               <div className="text-[var(--muted)] text-sm">Start streaming to see the QR code</div>
@@ -126,6 +145,7 @@ export default function Sender() {
           </div>
         </div>
         <div className="mt-6"><MetricRow {...metrics} idle={status !== "live"} /></div>
+        <audio ref={micAudioRef} autoPlay playsInline className="hidden" />
       </div>
     </div>
   );
