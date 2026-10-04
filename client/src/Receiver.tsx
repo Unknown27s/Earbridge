@@ -79,7 +79,26 @@ export default function Receiver() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const id = params.get("id");
-    if (id) setPeerId(id);
+    if (id) {
+      setPeerId(id);
+      setTimeout(() => document.getElementById("connect-btn")?.click(), 500);
+    }
+    let removeListener: (() => void) | undefined;
+    (async () => {
+      try {
+        const { App } = await import("@capacitor/app");
+        const listener = await App.addListener("appUrlOpen", (event: { url: string }) => {
+          try {
+            const deepId = new URL(event.url).searchParams.get("id");
+            if (deepId) {
+              setPeerId(deepId);
+              setTimeout(() => document.getElementById("connect-btn")?.click(), 500);
+            }
+          } catch {}
+        });
+        removeListener = () => listener.remove();
+      } catch {}
+    })();
     const poll = setInterval(async () => {
       try {
         const r = await fetch(abs("/sender-id"));
@@ -87,7 +106,10 @@ export default function Receiver() {
         if (j.id && !peerId) setPeerId(j.id);
       } catch {}
     }, 2000);
-    return () => clearInterval(poll);
+    return () => {
+      clearInterval(poll);
+      removeListener?.();
+    };
   }, [serverUrl]);
 
   useEffect(() => {
@@ -267,7 +289,7 @@ export default function Receiver() {
           </div>
         )}
         {status === "idle" || status === "error" ? (
-          <button className="w-full rounded-full bg-[var(--accent)] py-4 text-lg font-semibold text-[#0d0d12]" onClick={connect} disabled={!peerId}>
+          <button id="connect-btn" className="w-full rounded-full bg-[var(--accent)] py-4 text-lg font-semibold text-[#0d0d12]" onClick={connect} disabled={!peerId}>
             {peerId ? "Connect" : "Waiting for PC…"}
           </button>
         ) : (

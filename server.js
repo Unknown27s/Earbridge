@@ -34,6 +34,9 @@ app.get("/qr.png", async (req, res) => {
 });
 
 app.get("/receiver-url", (req, res) => {
+  if (req.query.format === "app" && req.query.id) {
+    return res.json({ url: `earbridge://receiver?id=${encodeURIComponent(req.query.id)}` });
+  }
   let url = `http://${getLocalIP()}:${PORT}/receiver.html`;
   if (req.query.id) url += `?id=${encodeURIComponent(req.query.id)}`;
   res.json({ url });

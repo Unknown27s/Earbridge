@@ -28,9 +28,17 @@ export default function Sender() {
       try {
         await navigator.mediaDevices.getUserMedia({ audio: true });
         const devs = await navigator.mediaDevices.enumerateDevices();
-        setSources(devs.filter((d) => d.kind === "audioinput"));
+        const inputs = devs.filter((d) => d.kind === "audioinput");
+        setSources(inputs);
+        const params = new URLSearchParams(location.search);
+        if (params.get("autostart") === "1") {
+          const monitor = inputs.find((d) => /monitor/i.test(d.label)) ?? inputs[0];
+          if (monitor) setSourceId(monitor.deviceId);
+          start(monitor?.deviceId);
+        }
       } catch {}
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -70,10 +78,11 @@ export default function Sender() {
     return () => clearInterval(t);
   }, [status]);
 
-  async function start() {
+  async function start(deviceId?: string) {
     try {
+      const picked = deviceId ?? sourceId;
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: sourceId ? { exact: sourceId } : undefined, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        audio: { deviceId: picked ? { exact: picked } : undefined, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       });
       streamRef.current = stream;
       setStatus("connecting");
@@ -82,7 +91,7 @@ export default function Sender() {
       peer.on("open", (id) => {
         setPeerId(id);
         setStatus("live");
-        fetch(`/receiver-url?id=${encodeURIComponent(id)}`)
+        fetch(`/receiver-url?format=app&id=${encodeURIComponent(id)}`)
           .then((r) => r.json())
           .then((j) => setQrUrl(j.url))
           .catch(() => setQrUrl(`${base()}/receiver.html?id=${id}`));
@@ -124,7 +133,7 @@ export default function Sender() {
               {sources.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || d.deviceId}</option>)}
             </select>
             {status === "idle" || status === "error" ? (
-              <button className="w-full rounded-full bg-[var(--accent)] py-3 font-semibold text-[#0d0d12]" onClick={start}>Start Streaming</button>
+              <button className="w-full rounded-full bg-[var(--accent)] py-3 font-semibold text-[#0d0d12]" onClick={() => start()}>Start Streaming</button>
             ) : (
               <button className="w-full rounded-full bg-[var(--danger)] py-3 font-semibold text-[#0d0d12]" onClick={stop}>Stop</button>
             )}
