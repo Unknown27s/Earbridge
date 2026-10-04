@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Earbridge Receiver</title>
+<!-- Google Fonts: Space Grotesk & Inter -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;family=Public+Sans:wght@500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            base: "#0d0d12",
+            card: "#16161e",
+            fill: "#22222e",
+            live: "#4ade80",
+            danger: "#f87171",
+            warning: "#fbbf24",
+            "on-surface": "#f1f1f5",
+            "on-surface-variant": "#9393a5"
+          },
+          borderRadius: {
+            "DEFAULT": "0.5rem",
+            "lg": "1rem",
+            "xl": "1.5rem",
+            "2xl": "1.25rem",
+            "full": "9999px"
+          },
+          fontFamily: {
+            headline: ["Space Grotesk", "sans-serif"],
+            display: ["Space Grotesk", "sans-serif"],
+            body: ["Inter", "sans-serif"],
+            label: ["Public Sans", "sans-serif"]
+          },
+          keyframes: {
+            pulseGlow: {
+              '0%, 100%': { transform: 'scale(1)', opacity: '0.25' },
+              '50%': { transform: 'scale(1.18)', opacity: '0.45' }
+            },
+            ripple: {
+              '0%': { transform: 'scale(0.85)', opacity: '0.6' },
+              '100%': { transform: 'scale(1.45)', opacity: '0' }
+            },
+            rippleDelayed: {
+              '0%': { transform: 'scale(0.85)', opacity: '0.5' },
+              '100%': { transform: 'scale(1.75)', opacity: '0' }
+            },
+            soundbar: {
+              '0%, 100%': { height: '6px' },
+              '50%': { height: '24px' }
+            }
+          },
+          animation: {
+            'pulse-glow': 'pulseGlow 3.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'ripple': 'ripple 3s ease-out infinite',
+            'ripple-delayed': 'rippleDelayed 3s ease-out infinite 1.5s'
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Custom precise wave bar animation timing */
+    .bar-1 { animation: soundbar 0.9s ease-in-out infinite 0.1s; }
+    .bar-2 { animation: soundbar 0.7s ease-in-out infinite 0.25s; }
+    .bar-3 { animation: soundbar 1.1s ease-in-out infinite 0.05s; }
+    .bar-4 { animation: soundbar 0.8s ease-in-out infinite 0.35s; }
+    .bar-5 { animation: soundbar 1.0s ease-in-out infinite 0.15s; }
+    .bar-6 { animation: soundbar 0.75s ease-in-out infinite 0.3s; }
+    .bar-7 { animation: soundbar 1.15s ease-in-out infinite 0.2s; }
+
+    /* Glassmorphism gradient accents */
+    .glass-orb {
+      background: radial-gradient(circle at 35% 30%, rgba(74, 222, 128, 0.28), rgba(22, 22, 30, 0.9) 70%);
+      box-shadow: 0 0 50px -10px rgba(74, 222, 128, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.25);
+    }
+    .orb-concentric {
+      box-shadow: inset 0 0 24px rgba(74, 222, 128, 0.15);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-base text-on-surface font-body antialiased min-h-screen flex flex-col justify-between select-none overflow-x-hidden p-0 m-0">
+<!-- Top Shared App Bar Anchored to JSON specification -->
+<header class="flex justify-between items-center w-full px-5 py-4 fixed top-0 left-0 z-50 bg-transparent">
+<!-- Left: Connected IP Source Telemetry -->
+<div class="flex items-center gap-2 bg-card/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-fill">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-live opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-live"></span>
+</span>
+<span class="font-display font-medium text-xs text-on-surface tracking-tight">PC 192.168.1.20</span>
+</div>
+<!-- Center: Brand Headline Anchor -->
+<div class="font-headline font-bold text-lg tracking-tight text-on-surface flex items-center gap-1.5">
+<span class="material-symbols-outlined text-live text-xl" data-icon="graphic_eq">graphic_eq</span>
+<span>Earbridge</span>
+</div>
+<!-- Right: Latency Metric pill & Quick Settings -->
+<div class="flex items-center gap-2">
+<div class="flex items-center gap-1 bg-card/90 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-fill">
+<span class="w-1.5 h-1.5 rounded-full bg-live"></span>
+<span class="font-headline font-semibold text-xs text-live">42ms</span>
+</div>
+<button aria-label="Settings" class="w-8 h-8 rounded-full bg-card/90 backdrop-blur-md flex items-center justify-center border border-fill hover:opacity-80 active:scale-95 transition-all text-on-surface-variant hover:text-on-surface">
+<span class="material-symbols-outlined text-lg" data-icon="settings">settings</span>
+</button>
+</div>
+</header>
+<!-- Main Soundstage Canvas -->
+<main class="flex-1 flex flex-col items-center justify-center pt-24 pb-8 px-6 w-full max-w-md mx-auto">
+<!-- Glowing Interactive Orb Hub -->
+<div class="relative w-64 h-64 flex items-center justify-center my-auto">
+<!-- Outer expanding pulsing ripples -->
+<div class="absolute w-64 h-64 rounded-full border border-live/20 animate-ripple"></div>
+<div class="absolute w-64 h-64 rounded-full border border-live/15 animate-ripple-delayed"></div>
+<!-- Atmospheric Ambient Glow Halo -->
+<div class="absolute w-56 h-56 rounded-full bg-live/15 blur-2xl animate-pulse-glow"></div>
+<!-- Concentric Acoustic Outer Ring -->
+<div class="absolute w-[232px] h-[232px] rounded-full border border-live/25 orb-concentric flex items-center justify-center">
+<!-- Intermediate Track Ring with subtle dash pattern -->
+<div class="w-[214px] h-[214px] rounded-full border border-white/5 border-dashed"></div>
+</div>
+<!-- Main Glassmorphism Sound Core Orb (200px) -->
+<div class="relative w-[200px] h-[200px] rounded-full glass-orb border border-live/40 flex flex-col items-center justify-center backdrop-blur-xl p-5 overflow-hidden">
+<!-- Top LIVE Pill Badge inside Glass Core -->
+<div class="flex items-center gap-1.5 bg-[#0d0d12]/80 border border-live/40 px-2.5 py-0.5 rounded-full shadow-sm mb-3">
+<span class="w-1.5 h-1.5 rounded-full bg-live animate-ping"></span>
+<span class="font-headline text-[10px] font-bold tracking-widest text-live uppercase">LIVE</span>
+</div>
+<!-- Dynamic Animated Equalizer Bars -->
+<div class="flex items-end justify-center gap-1.5 h-8 w-28 mb-3">
+<div class="w-1 bg-live/90 rounded-full bar-1"></div>
+<div class="w-1 bg-live/90 rounded-full bar-2"></div>
+<div class="w-1 bg-live rounded-full bar-3"></div>
+<div class="w-1 bg-live rounded-full bar-4"></div>
+<div class="w-1 bg-live/90 rounded-full bar-5"></div>
+<div class="w-1 bg-live/80 rounded-full bar-6"></div>
+<div class="w-1 bg-live/90 rounded-full bar-7"></div>
+</div>
+<!-- Lossless Fidelity Technical Metric inside core -->
+<div class="flex items-center gap-1 text-[11px] font-medium tracking-tight text-on-surface-variant font-label">
+<span class="text-on-surface font-semibold">48.0 kHz</span>
+<span class="text-white/40">•</span>
+<span class="text-live">Lossless</span>
+</div>
+</div>
+</div>
+<!-- Direct Status Headline Section -->
+<div class="text-center mt-3 mb-6">
+<div class="flex items-center justify-center gap-2 mb-1.5">
+<span class="w-2.5 h-2.5 rounded-full bg-live shadow-[0_0_8px_#4ade80]"></span>
+<h1 class="font-headline text-xl font-semibold text-on-surface tracking-tight">Receiving to Bluetooth</h1>
+</div>
+<p class="text-xs text-on-surface-variant font-normal leading-relaxed max-w-[270px] mx-auto">
+        Direct 24-bit audio stream routed via phone bridge
+      </p>
+</div>
+<!-- Output Device Interactive Chip / Card -->
+<div class="w-full bg-card hover:bg-fill/60 transition-colors border border-fill rounded-xl p-3.5 flex items-center justify-between shadow-lg shadow-black/40 mb-6 cursor-pointer group active:scale-[0.99]">
+<div class="flex items-center gap-3.5">
+<div class="w-11 h-11 rounded-lg bg-fill flex items-center justify-center border border-white/5 text-on-surface group-hover:text-live transition-colors">
+<span class="material-symbols-outlined text-2xl" data-icon="headphones">headphones</span>
+</div>
+<div class="text-left">
+<div class="text-[11px] font-medium uppercase tracking-wider text-on-surface-variant">Audio Output Device</div>
+<div class="flex items-center gap-2 mt-0.5">
+<span class="font-headline font-semibold text-sm text-on-surface">WH-1000XM5</span>
+<span class="text-[10px] font-semibold bg-base text-live px-1.5 py-0.5 rounded border border-live/30 leading-none">AAC</span>
+</div>
+</div>
+</div>
+<div class="flex items-center text-on-surface-variant group-hover:text-on-surface transition-colors pr-1">
+<span class="material-symbols-outlined text-xl" data-icon="chevron_right">chevron_right</span>
+</div>
+</div>
+<!-- Audio Telemetry Bento Grid Strip -->
+<div class="w-full grid grid-cols-3 gap-2 mb-4">
+<div class="bg-card border border-fill rounded-lg p-2.5 text-center">
+<div class="text-[10px] uppercase font-label tracking-wider text-on-surface-variant">BUFFER</div>
+<div class="font-headline font-semibold text-xs text-on-surface mt-1">12 ms</div>
+</div>
+<div class="bg-card border border-fill rounded-lg p-2.5 text-center">
+<div class="text-[10px] uppercase font-label tracking-wider text-on-surface-variant">BITRATE</div>
+<div class="font-headline font-semibold text-xs text-live mt-1">1411 kbps</div>
+</div>
+<div class="bg-card border border-fill rounded-lg p-2.5 text-center">
+<div class="text-[10px] uppercase font-label tracking-wider text-on-surface-variant">DROPS</div>
+<div class="font-headline font-semibold text-xs text-on-surface mt-1">0 pkts</div>
+</div>
+</div>
+</main>
+<!-- Thumb Zone: Massive Pill Action Button & Security Footer -->
+<footer class="w-full max-w-md mx-auto px-6 pb-8 pt-2">
+<!-- 64px Tall Vibrant Green Pill Button -->
+<button class="w-full h-16 bg-live hover:bg-[#3ec974] active:scale-[0.98] transition-all rounded-full flex items-center justify-between px-7 shadow-lg shadow-live/20 group">
+<!-- Left side power graphic -->
+<div class="w-9 h-9 rounded-full bg-black/15 flex items-center justify-center text-base">
+<span class="material-symbols-outlined text-xl font-bold" data-icon="power_settings_new">power_settings_new</span>
+</div>
+<!-- Center primary state label -->
+<span class="font-headline font-bold text-lg text-base tracking-tight">Connected</span>
+<!-- Right Tap To Stop sub-badge -->
+<div class="bg-base/20 hover:bg-base/30 px-3 py-1 rounded-full text-base font-semibold text-xs tracking-tight transition-colors">
+        Tap to Stop
+      </div>
+</button>
+<!-- Session Security & Peer ID Meta Chip -->
+<div class="flex items-center justify-between mt-4 px-2 text-[11px] font-mono text-on-surface-variant/80">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-live" data-icon="lock">lock</span>
+<span>PEER ID: EB-9842-X7</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-live/70"></span>
+<span class="font-medium tracking-wide">AES-GCM 256</span>
+</div>
+</div>
+</footer>
+</body></html>

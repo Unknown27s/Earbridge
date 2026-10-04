@@ -91,7 +91,7 @@ export default function Sender() {
       peer.on("open", (id) => {
         setPeerId(id);
         setStatus("live");
-        fetch(`/receiver-url?format=app&id=${encodeURIComponent(id)}`)
+        fetch(`/receiver-url?id=${encodeURIComponent(id)}`)
           .then((r) => r.json())
           .then((j) => setQrUrl(j.url))
           .catch(() => setQrUrl(`${base()}/receiver.html?id=${id}`));
@@ -122,7 +122,10 @@ export default function Sender() {
     <div className="min-h-screen p-4 grid place-items-center">
       <div className="w-full max-w-[880px] rounded-2xl bg-[var(--card)] p-6 shadow-2xl">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold">Audio Sender</h1>
+          <h1 className="text-xl font-bold flex items-center gap-2.5">
+            <img src="/earbridge-logo.png" alt="Earbridge" className="w-9 h-9 rounded-full" />
+            Earbridge <span className="text-sm font-normal text-[var(--muted)]">Sender</span>
+          </h1>
           {status === "live" && <span className="flex items-center gap-2 text-[var(--accent)] text-sm font-semibold"><span className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse-dot" />LIVE</span>}
         </div>
         <div className="grid md:grid-cols-2 gap-6 mt-6 items-center">
@@ -142,6 +145,7 @@ export default function Sender() {
             {peerId ? (
               <>
                 <div className="rounded-2xl bg-white p-3"><QRCodeSVG value={qrUrl} size={150} /></div>
+                <div className="text-xs text-[var(--muted)] break-all text-center max-w-[220px]">{qrUrl.replace(/\?id=.*$/, "")}</div>
                 <button className="flex items-center gap-2 text-sm text-[var(--muted)]" onClick={() => navigator.clipboard.writeText(peerId)}>
                   <Copy size={14} /> {peerId.slice(0, 12)}…
                 </button>

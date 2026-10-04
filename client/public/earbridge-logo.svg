@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" fill="none">
+  <defs>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    <linearGradient id="bridgeGrad" x1="20" y1="140" x2="220" y2="140" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4ade80" stop-opacity="0.2"/>
+      <stop offset="25%" stop-color="#4ade80"/>
+      <stop offset="50%" stop-color="#86efac"/>
+      <stop offset="75%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#4ade80" stop-opacity="0.2"/>
+    </linearGradient>
+    <linearGradient id="barGrad" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#166534" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#4ade80"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Ambient background glow aura -->
+  <circle cx="120" cy="120" r="70" fill="#4ade80" opacity="0.12" filter="url(#glow)"/>
+
+  <!-- Bridge Arc (Suspension bridge curve spanning over audio spectrum) -->
+  <path d="M 32 152 C 72 82, 168 82, 208 152" stroke="url(#bridgeGrad)" stroke-width="4.5" stroke-linecap="round" filter="url(#glow)"/>
+  
+  <!-- Subtle top suspension anchor cables / upper crest arch -->
+  <path d="M 44 148 C 80 102, 160 102, 196 148" stroke="#4ade80" stroke-width="1.5" stroke-opacity="0.4" stroke-dasharray="3 3"/>
+
+  <!-- Soundwave equalizer bars bridging the span -->
+  <!-- Bar 1 (Outer left) -->
+  <rect x="58" y="128" width="6" height="24" rx="3" fill="url(#barGrad)"/>
+  <!-- Bar 2 -->
+  <rect x="74" y="112" width="6" height="40" rx="3" fill="url(#barGrad)"/>
+  <!-- Bar 3 -->
+  <rect x="90" y="98" width="6" height="54" rx="3" fill="url(#barGrad)" filter="url(#glow)"/>
+  <!-- Bar 4 (Center-left peak) -->
+  <rect x="106" y="86" width="6" height="66" rx="3" fill="#86efac" filter="url(#glow)"/>
+  <!-- Bar 5 (Center-right peak) -->
+  <rect x="128" y="86" width="6" height="66" rx="3" fill="#86efac" filter="url(#glow)"/>
+  <!-- Bar 6 -->
+  <rect x="144" y="98" width="6" height="54" rx="3" fill="url(#barGrad)" filter="url(#glow)"/>
+  <!-- Bar 7 -->
+  <rect x="160" y="112" width="6" height="40" rx="3" fill="url(#barGrad)"/>
+  <!-- Bar 8 (Outer right) -->
+  <rect x="176" y="128" width="6" height="24" rx="3" fill="url(#barGrad)"/>
+
+  <!-- Baseline bridge deck / audio datum line -->
+  <line x1="28" y1="156" x2="212" y2="156" stroke="#4ade80" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+</svg>

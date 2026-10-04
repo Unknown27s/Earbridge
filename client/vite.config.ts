@@ -8,9 +8,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        index: resolve(__dirname, 'index.html'),
-        sender: resolve(__dirname, 'sender.html'),
-        receiver: resolve(__dirname, 'receiver.html'),
+        stub: resolve(__dirname, 'stub.html'),
       },
     },
   },

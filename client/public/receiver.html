@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Earbridge Receiver</title>
+<!-- Google Fonts: Space Grotesk & Inter -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;family=Public+Sans:wght@500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            base: "#0d0d12",
+            card: "#16161e",
+            fill: "#22222e",
+            live: "#4ade80",
+            danger: "#f87171",
+            warning: "#fbbf24",
+            "on-surface": "#f1f1f5",
+            "on-surface-variant": "#9393a5"
+          },
+          borderRadius: {
+            "DEFAULT": "0.5rem",
+            "lg": "1rem",
+            "xl": "1.5rem",
+            "2xl": "1.25rem",
+            "full": "9999px"
+          },
+          fontFamily: {
+            headline: ["Space Grotesk", "sans-serif"],
+            display: ["Space Grotesk", "sans-serif"],
+            body: ["Inter", "sans-serif"],
+            label: ["Public Sans", "sans-serif"]
+          },
+          keyframes: {
+            pulseGlow: {
+              '0%, 100%': { transform: 'scale(1)', opacity: '0.25' },
+              '50%': { transform: 'scale(1.18)', opacity: '0.45' }
+            },
+            ripple: {
+              '0%': { transform: 'scale(0.85)', opacity: '0.6' },
+              '100%': { transform: 'scale(1.45)', opacity: '0' }
+            },
+            rippleDelayed: {
+              '0%': { transform: 'scale(0.85)', opacity: '0.5' },
+              '100%': { transform: 'scale(1.75)', opacity: '0' }
+            },
+            soundbar: {
+              '0%, 100%': { height: '6px' },
+              '50%': { height: '24px' }
+            }
+          },
+          animation: {
+            'pulse-glow': 'pulseGlow 3.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'ripple': 'ripple 3s ease-out infinite',
+            'ripple-delayed': 'rippleDelayed 3s ease-out infinite 1.5s'
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Custom precise wave bar animation timing */
+    .bar-1 { animation: soundbar 0.9s ease-in-out infinite 0.1s; }
+    .bar-2 { animation: soundbar 0.7s ease-in-out infinite 0.25s; }
+    .bar-3 { animation: soundbar 1.1s ease-in-out infinite 0.05s; }
+    .bar-4 { animation: soundbar 0.8s ease-in-out infinite 0.35s; }
+    .bar-5 { animation: soundbar 1.0s ease-in-out infinite 0.15s; }
+    .bar-6 { animation: soundbar 0.75s ease-in-out infinite 0.3s; }
+    .bar-7 { animation: soundbar 1.15s ease-in-out infinite 0.2s; }
+
+    /* Glassmorphism gradient accents */
+    .glass-orb {
+      background: radial-gradient(circle at 35% 30%, rgba(74, 222, 128, 0.28), rgba(22, 22, 30, 0.9) 70%);
+      box-shadow: 0 0 50px -10px rgba(74, 222, 128, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.25);
+    }
+    .orb-concentric {
+      box-shadow: inset 0 0 24px rgba(74, 222, 128, 0.15);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  <link rel="icon" type="image/png" href="./earbridge-logo.png"/>
+</head>
+<body class="bg-base text-on-surface font-body antialiased min-h-screen flex flex-col justify-between select-none overflow-x-hidden p-0 m-0">
+<!-- Top Shared App Bar Anchored to JSON specification -->
+<header class="flex justify-between items-center w-full px-5 py-4 fixed top-0 left-0 z-50 bg-transparent">
+<!-- Left: Connected IP Source Telemetry -->
+<div class="flex items-center gap-2 bg-card/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-fill">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-live opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-live"></span>
+</span>
+<span class="font-display font-medium text-xs text-on-surface tracking-tight" id="pc-label">PC …</span>
+</div>
+<!-- Center: Brand Headline Anchor -->
+<div class="font-headline font-bold text-lg tracking-tight text-on-surface flex items-center gap-1.5">
+<span class="material-symbols-outlined text-live text-xl" data-icon="graphic_eq">graphic_eq</span>
+<span>Earbridge</span>
+</div>
+<!-- Right: Latency Metric pill & Quick Settings -->
+<div class="flex items-center gap-2">
+<div class="flex items-center gap-1 bg-card/90 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-fill">
+<span class="w-1.5 h-1.5 rounded-full bg-live"></span>
+<span class="font-headline font-semibold text-xs text-live" id="latency-pill">—</span>
+</div>
+<button id="settings-btn" aria-label="Settings" class="w-8 h-8 rounded-full bg-card/90 backdrop-blur-md flex items-center justify-center border border-fill hover:opacity-80 active:scale-95 transition-all text-on-surface-variant hover:text-on-surface">
+<span class="material-symbols-outlined text-lg" data-icon="settings">settings</span>
+</button>
+</div>
+</header>
+<!-- Main Soundstage Canvas -->
+<main class="flex-1 flex flex-col items-center justify-center pt-24 pb-8 px-6 w-full max-w-md mx-auto">
+<!-- Glowing Interactive Orb Hub -->
+<div class="relative w-64 h-64 flex items-center justify-center my-auto">
+<!-- Outer expanding pulsing ripples -->
+<div class="absolute w-64 h-64 rounded-full border border-live/20 animate-ripple"></div>
+<div class="absolute w-64 h-64 rounded-full border border-live/15 animate-ripple-delayed"></div>
+<!-- Atmospheric Ambient Glow Halo -->
+<div class="absolute w-56 h-56 rounded-full bg-live/15 blur-2xl animate-pulse-glow"></div>
+<!-- Concentric Acoustic Outer Ring -->
+<div class="absolute w-[232px] h-[232px] rounded-full border border-live/25 orb-concentric flex items-center justify-center">
+<!-- Intermediate Track Ring with subtle dash pattern -->
+<div class="w-[214px] h-[214px] rounded-full border border-white/5 border-dashed"></div>
+</div>
+<!-- Main Glassmorphism Sound Core Orb (200px) -->
+<div class="relative w-[200px] h-[200px] rounded-full glass-orb border border-live/40 flex flex-col items-center justify-center backdrop-blur-xl p-5 overflow-hidden">
+<!-- Top LIVE Pill Badge inside Glass Core -->
+<div id="orb-live-badge" style="display:none" class="flex items-center gap-1.5 bg-[#0d0d12]/80 border border-live/40 px-2.5 py-0.5 rounded-full shadow-sm mb-3">
+<span class="w-1.5 h-1.5 rounded-full bg-live animate-ping"></span>
+<span class="font-headline text-[10px] font-bold tracking-widest text-live uppercase">LIVE</span>
+</div>
+<!-- Dynamic Animated Equalizer Bars -->
+<div class="flex items-end justify-center gap-1.5 h-8 w-28 mb-3">
+<div class="w-1 bg-live/90 rounded-full bar-1"></div>
+<div class="w-1 bg-live/90 rounded-full bar-2"></div>
+<div class="w-1 bg-live rounded-full bar-3"></div>
+<div class="w-1 bg-live rounded-full bar-4"></div>
+<div class="w-1 bg-live/90 rounded-full bar-5"></div>
+<div class="w-1 bg-live/80 rounded-full bar-6"></div>
+<div class="w-1 bg-live/90 rounded-full bar-7"></div>
+</div>
+<!-- Lossless Fidelity Technical Metric inside core -->
+<div class="flex items-center gap-1 text-[11px] font-medium tracking-tight text-on-surface-variant font-label">
+<span class="text-on-surface font-semibold">48.0 kHz</span>
+<span class="text-white/40">•</span>
+<span class="text-live">Lossless</span>
+</div>
+</div>
+</div>
+<!-- Direct Status Headline Section -->
+<div class="text-center mt-3 mb-6">
+<div class="flex items-center justify-center gap-2 mb-1.5">
+<span class="w-2.5 h-2.5 rounded-full bg-live shadow-[0_0_8px_#4ade80]"></span>
+<h1 class="font-headline text-xl font-semibold text-on-surface tracking-tight" id="status-headline">Ready to connect</h1>
+</div>
+<p class="text-xs text-on-surface-variant font-normal leading-relaxed max-w-[270px] mx-auto">
+        Open the sender on your PC and press Connect
+      </p>
+</div>
+<!-- Output Device Interactive Chip / Card -->
+<div id="output-chip" class="w-full bg-card hover:bg-fill/60 transition-colors border border-fill rounded-xl p-3.5 flex items-center justify-between shadow-lg shadow-black/40 mb-4 cursor-pointer group active:scale-[0.99]">
+<div class="flex items-center gap-3.5">
+<div class="w-11 h-11 rounded-lg bg-fill flex items-center justify-center border border-white/5 text-on-surface group-hover:text-live transition-colors">
+<span class="material-symbols-outlined text-2xl" data-icon="headphones">headphones</span>
+</div>
+<div class="text-left">
+<div class="text-[11px] font-medium uppercase tracking-wider text-on-surface-variant">Audio Output Device</div>
+<div class="flex items-center gap-2 mt-0.5">
+<span class="font-headline font-semibold text-sm text-on-surface" id="output-name">Bluetooth</span>
+<span class="text-[10px] font-semibold bg-base text-live px-1.5 py-0.5 rounded border border-live/30 leading-none" id="output-codec">AUTO</span>
+</div>
+</div>
+</div>
+<div class="flex items-center text-on-surface-variant group-hover:text-on-surface transition-colors pr-1">
+<span class="material-symbols-outlined text-xl" data-icon="chevron_right">chevron_right</span>
+</div>
+</div>
+<!-- Mic + Volume controls -->
+<div class="w-full grid grid-cols-2 gap-2 mb-4">
+<button id="mic-btn" class="bg-card border border-fill rounded-lg p-2.5 text-xs font-semibold text-on-surface">🎤 Mic: OFF</button>
+<div class="bg-card border border-fill rounded-lg p-2.5 flex items-center gap-2">
+<span class="material-symbols-outlined text-base text-on-surface-variant">volume_up</span>
+<input id="vol-slider" type="range" min="0" max="100" value="100" class="w-full accent-[#4ade80]"/>
+</div>
+</div>
+<!-- Audio Telemetry Bento Grid Strip -->
+<div class="w-full grid grid-cols-3 gap-2 mb-4">
+<div class="bg-card border border-fill rounded-lg p-2.5 text-center">
+<div class="text-[10px] uppercase font-label tracking-wider text-on-surface-variant">BUFFER</div>
+<div class="font-headline font-semibold text-xs text-on-surface mt-1" id="t-buffer">—</div>
+</div>
+<div class="bg-card border border-fill rounded-lg p-2.5 text-center">
+<div class="text-[10px] uppercase font-label tracking-wider text-on-surface-variant">BITRATE</div>
+<div class="font-headline font-semibold text-xs text-live mt-1" id="t-bitrate">—</div>
+</div>
+<div class="bg-card border border-fill rounded-lg p-2.5 text-center">
+<div class="text-[10px] uppercase font-label tracking-wider text-on-surface-variant">DROPS</div>
+<div class="font-headline font-semibold text-xs text-on-surface mt-1" id="t-drops">—</div>
+</div>
+</div>
+</main>
+<!-- Thumb Zone: Massive Pill Action Button & Security Footer -->
+<footer class="w-full max-w-md mx-auto px-6 pb-8 pt-2">
+<!-- 64px Tall Vibrant Green Pill Button -->
+<button id="connect-btn" class="w-full h-16 bg-live hover:bg-[#3ec974] active:scale-[0.98] transition-all rounded-full flex items-center justify-between px-7 shadow-lg shadow-live/20 group">
+<!-- Left side power graphic -->
+<div class="w-9 h-9 rounded-full bg-black/15 flex items-center justify-center text-base">
+<span class="material-symbols-outlined text-xl font-bold" data-icon="power_settings_new">power_settings_new</span>
+</div>
+<!-- Center primary state label -->
+<span class="font-headline font-bold text-lg text-base tracking-tight" id="connect-label">Connect</span>
+<!-- Right Tap To Stop sub-badge -->
+<div class="bg-base/20 hover:bg-base/30 px-3 py-1 rounded-full text-base font-semibold text-xs tracking-tight transition-colors">
+        Tap to Stop
+      </div>
+</button>
+<!-- In-app QR scanner -->
+<button id="scan-btn" class="w-full bg-card border border-fill rounded-lg p-2.5 text-xs font-semibold text-on-surface mb-4">📷 Scan sender QR</button>
+<div id="scan-overlay" style="display:none" class="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center gap-4 p-6">
+<div id="qr-reader" class="w-full max-w-sm rounded-xl overflow-hidden"></div>
+<button id="scan-close" class="rounded-full bg-fill px-6 py-3 text-sm font-semibold">Close</button>
+</div>
+<!-- Session Security & Peer ID Meta Chip -->
+<div class="flex items-center justify-between mt-4 px-2 text-[11px] font-mono text-on-surface-variant/80">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-live" data-icon="lock">lock</span>
+<span id="peer-id-text">PEER ID: —</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-live/70"></span>
+<span class="font-medium tracking-wide">AES-GCM 256</span>
+</div>
+</div>
+</footer>
+<audio id="rx-audio" autoplay playsinline style="display:none"></audio>
+<script src="./peerjs.min.js"></script>
+<script src="./html5-qrcode.min.js"></script>
+<script>
+(function(){
+  const $=(id)=>document.getElementById(id);
+  const getSaved=()=>{try{return localStorage.getItem("earbridge_server")||""}catch(e){return ""}};
+  const norm=(u)=>{u=(u||"").trim().replace(/\/+$/,"");if(!u)return "";return /^https?:\/\//i.test(u)?u:"http://"+u};
+  const base=()=>getSaved()||(location.protocol.indexOf("http")===0?location.origin:"");
+  let peerId="", peer=null, micStream=null, micCall=null, micMode=0, volume=1;
+  try{const v=Number(localStorage.getItem("earbridge_volume"));if(isFinite(v))volume=Math.min(Math.max(v,0),1);}catch(e){}
+
+  function peerOpts(){const u=new URL(base());return{host:u.hostname,port:Number(u.port)||(u.protocol==="https:"?443:80),path:"/peerjs",secure:u.protocol==="https:"};}
+  function wsUrl(){const u=new URL(base());const p=u.protocol==="https:"?"wss":"ws";const port=Number(u.port)||(u.protocol==="https:"?443:80);return p+"://"+u.hostname+":"+(port+1)+"/control";}
+
+  function setUI(state,sub){
+    const map={idle:["Ready to connect","Open the sender on your PC and press Connect"],
+      connecting:["Connecting…","Talking to your PC"],live:["Receiving to Bluetooth","Direct audio stream routed via phone bridge"],
+      reconnecting:["Reconnecting…","WiFi dropped, retrying"],error:["Connection error","Check the PC and try again"]};
+    $("status-headline").textContent=map[state][0];
+    document.querySelector("main p").textContent=sub||map[state][1];
+    $("orb-live-badge").style.display=state==="live"?"flex":"none";
+    const btn=$("connect-btn");
+    if(state==="live"){btn.querySelector("#connect-label").textContent="Stop PC Audio";btn.classList.remove("bg-live");btn.classList.add("bg-danger");}
+    else{btn.querySelector("#connect-label").textContent=peerId?"Connect":"Waiting for PC…";btn.classList.add("bg-live");btn.classList.remove("bg-danger");}
+    btn.disabled=!peerId&&state!=="live";
+  }
+
+  async function ensureBase(){
+    if(base()){try{const r=await fetch(base()+"/sender-id");if(r.ok)return true;}catch(e){}}
+    const cur=getSaved();
+    const v=prompt("PC server URL (e.g. http://192.168.1.20:3000)",cur||"");
+    if(v&&norm(v)){try{localStorage.setItem("earbridge_server",norm(v));}catch(e){}return true;}
+    return !!base();
+  }
+
+  async function poll(){
+    try{const r=await fetch(base()+"/sender-id");const j=await r.json();if(j.id&&!peerId){peerId=j.id;$("peer-id-text").textContent="PEER ID: "+peerId.slice(0,11);if($("status-headline").textContent!=="Receiving to Bluetooth")setUI(document.querySelector("#connect-btn").disabled?"idle":"idle");}}catch(e){}
+  }
+
+  function connect(){
+    if(!peerId)return;
+    setUI("connecting");
+    peer=new Peer(undefined,peerOpts());
+    peer.on("open",()=>{const c=peer.connect(peerId);c.on("open",()=>c.send("hello"));});
+    peer.on("call",(call)=>{
+      call.answer();
+      call.on("stream",(stream)=>{
+        const a=$("rx-audio");a.srcObject=stream;a.volume=volume;a.play().catch(()=>{});
+        try{const C=new (window.AudioContext||window.webkitAudioContext)();C.resume();}catch(e){}
+        try{if("wakeLock" in navigator)navigator.wakeLock.request("screen").catch(()=>{});}catch(e){}
+        try{if("mediaSession" in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:"PC Audio",artist:"Earbridge"});}catch(e){}
+        try{const rx=call.peerConnection.getReceivers()[0];if(rx){rx.playoutDelayHint=0;if("jitterBufferTarget" in rx)rx.jitterBufferTarget=0;}}catch(e){}
+        setUI("live");
+        setInterval(async()=>{
+          try{const rep=await call.peerConnection.getStats();let jit=null,br=null,drop=null,rtt=null,bytes=0;
+            rep.forEach(x=>{if(x.type==="inbound-rtp"&&x.kind==="audio"){if(x.jitter!=null)jit=x.jitter*1000;bytes+=x.bytesReceived||0;if(x.packetsLost!=null)drop=x.packetsLost;}
+              if(x.type==="candidate-pair"&&x.nominated&&x.currentRoundTripTime!=null)rtt=x.currentRoundTripTime*1000;});
+            if(jit!=null)$("t-buffer").textContent=Math.round(jit)+" ms";
+            if(drop!=null)$("t-drops").textContent=drop+" pkts";
+            if(rtt!=null)$("latency-pill").textContent=Math.round(rtt)+"ms";
+            if(window._rxBytes!=null&&bytes>window._rxBytes)$("t-bitrate").textContent=Math.round((bytes-window._rxBytes)*8/3000)+" kbps";
+            window._rxBytes=bytes;}catch(e){}
+        },3000);
+      });
+    });
+    peer.on("disconnected",()=>{try{peer.reconnect();}catch(e){}setUI("reconnecting");});
+    peer.on("error",()=>setUI("error"));
+  }
+
+  async function toggleMic(){
+    const b=$("mic-btn");
+    if(micMode===0){
+      try{micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});}catch(e){return;}
+      if(!peer)return;
+      micCall=peer.call(peerId,micStream);micMode=1;b.textContent="🎤 Mic: ON";
+    }else if(micMode===1){
+      micStream.getAudioTracks().forEach(t=>t.enabled=false);micMode=2;b.textContent="🎤 Mic: MUTED";
+    }else{
+      try{micCall&&micCall.close();}catch(e){}micStream&&micStream.getTracks().forEach(t=>t.stop());
+      micStream=null;micMode=0;b.textContent="🎤 Mic: OFF";
+    }
+  }
+
+  function stopAll(){
+    try{const w=new WebSocket(wsUrl());w.onopen=()=>w.send(JSON.stringify({role:"receiver",cmd:"stop"}));}catch(e){}
+    try{micCall&&micCall.close();}catch(e){}micStream&&micStream.getTracks().forEach(t=>t.stop());
+    micStream=null;micMode=0;$("mic-btn").textContent="🎤 Mic: OFF";
+    try{peer&&peer.destroy();}catch(e){}peer=null;
+    $("t-buffer").textContent="—";$("t-bitrate").textContent="—";$("t-drops").textContent="—";$("latency-pill").textContent="—";
+    setUI("idle");
+  }
+
+  let qrScanner=null;
+  async function closeScanner(){try{if(qrScanner){await qrScanner.stop();qrScanner.clear();}}catch(e){}qrScanner=null;$("scan-overlay").style.display="none";}
+  async function openScanner(){
+    $("scan-overlay").style.display="flex";
+    try{
+      qrScanner=new Html5Qrcode("qr-reader");
+      await qrScanner.start({facingMode:"environment"},{fps:10,qrbox:250},
+        (text)=>{try{const id=new URL(text).searchParams.get("id");if(id){peerId=id;$("peer-id-text").textContent="PEER ID: "+id.slice(0,11);closeScanner();setTimeout(()=>$("connect-btn").click(),400);}}catch(e){}},
+        ()=>{});
+    }catch(e){$("scan-overlay").style.display="none";}
+  }
+  $("scan-btn").addEventListener("click",openScanner);
+  $("scan-close").addEventListener("click",closeScanner);
+  $("connect-btn").addEventListener("click",()=>{const h=$("status-headline").textContent;if(h==="Receiving to Bluetooth")stopAll();else connect();});
+  $("mic-btn").addEventListener("click",toggleMic);
+  $("vol-slider").addEventListener("input",(e)=>{volume=Number(e.target.value)/100;const a=$("rx-audio");if(a)a.volume=volume;try{localStorage.setItem("earbridge_volume",String(volume));}catch(e2){}});
+  $("vol-slider").value=Math.round(volume*100);
+  $("settings-btn").addEventListener("click",()=>{const v=prompt("PC server URL",getSaved()||base());if(v&&norm(v)){try{localStorage.setItem("earbridge_server",norm(v));}catch(e){}location.reload();}});
+  $("output-chip").addEventListener("click",async()=>{
+    try{
+      const devs=await navigator.mediaDevices.enumerateDevices();
+      const outs=devs.filter(d=>d.kind==="audiooutput");
+      const a=$("rx-audio");
+      if(a&&a.setSinkId&&outs.length>1){
+        const cur=outs.findIndex(d=>d.deviceId===(a.sinkId||""));
+        const nxt=outs[(cur+1)%outs.length];
+        await a.setSinkId(nxt.deviceId);
+        $("output-name").textContent=nxt.label||"Output "+((cur+1)%outs.length+1);
+      }
+    }catch(e){}
+  });
+
+  (async()=>{
+    try{const Cap=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;
+      if(Cap&&Cap.addListener)await Cap.addListener("appUrlOpen",(ev)=>{try{const id=new URL(ev.url).searchParams.get("id");if(id){peerId=id;$("peer-id-text").textContent="PEER ID: "+id.slice(0,11);setTimeout(()=>$("connect-btn").click(),500);}}catch(e){}});
+    }catch(e){}
+    const q=new URLSearchParams(location.search).get("id");
+    if(q){peerId=q;$("peer-id-text").textContent="PEER ID: "+q.slice(0,11);setUI("idle");setTimeout(()=>$("connect-btn").click(),600);return;}
+    if(await ensureBase()){
+      try{$("pc-label").textContent="PC "+new URL(base()).hostname;}catch(e){}
+      setInterval(poll,2000);poll();
+    }
+    setUI("idle");
+  })();
+})();
+</script>
+</body></html>

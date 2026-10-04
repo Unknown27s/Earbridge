@@ -207,6 +207,10 @@ export default function Receiver() {
   return (
     <div className="min-h-screen p-4 grid place-items-center">
       <div className="w-full max-w-sm flex flex-col items-center gap-6">
+        <div className="flex items-center gap-2 text-[var(--muted)]">
+          <img src="/earbridge-logo.png" alt="Earbridge" className="w-7 h-7 rounded-full" />
+          <span className="text-sm font-semibold tracking-wide">Earbridge</span>
+        </div>
         <form
           className="w-full"
           onSubmit={(e) => {
