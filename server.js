@@ -198,9 +198,22 @@ wss.on("connection", (ws) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   const origin = publicOrigin(null);
-  console.log(`\n  Sender page:   ${origin}/sender.html`);
-  console.log(`  Receiver page: ${origin}/receiver.html`);
-  console.log(`  Signalling:    ${origin}/peerjs`);
-  console.log(`  Control WS:    ${origin.replace(/^http/, "ws")}/control`);
-  console.log(`  TURN relay:    ${process.env.TURN_URL ? process.env.TURN_URL : "not configured (LAN / non-symmetric NAT only)"}\n`);
+  const remote = /^https:\/\//i.test(origin);
+  // The PC must use localhost: browsers only expose getUserMedia in a secure
+  // context (https://, localhost, 127.0.0.1). Opening the sender on the LAN IP
+  // over plain http leaves navigator.mediaDevices undefined, so Start silently
+  // does nothing. The phone, by contrast, must use whatever address is
+  // reachable from the handset.
+  const senderUrl = remote ? `${origin}/sender.html` : `http://localhost:${PORT}/sender.html`;
+  console.log(`\n  PC sender page:   ${senderUrl}`);
+  console.log(`  Phone receiver:   ${origin}/receiver.html`);
+  console.log(`  QR code:          http://localhost:${PORT}/qr.png`);
+  if (!remote) {
+    console.log(`\n  Note: open the sender on localhost, not ${origin.replace(/^https?:\/\//, "")}.`);
+    console.log(`        A LAN address over http is not a secure context, so the browser`);
+    console.log(`        blocks microphone capture and Start will not work.`);
+  }
+  console.log(`\n  Signalling:       ${origin}/peerjs`);
+  console.log(`  Control WS:       ${origin.replace(/^http/, "ws")}/control`);
+  console.log(`  TURN relay:       ${process.env.TURN_URL ? process.env.TURN_URL : "not configured (LAN / non-symmetric NAT only)"}\n`);
 });

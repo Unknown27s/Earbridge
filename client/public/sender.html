@@ -390,9 +390,13 @@
   async function start(deviceId){
     const sel=$("source-select");
     const picked = deviceId || sel.value;
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+      $("orb-sub").textContent="No mic access: open this page on localhost, not "+location.hostname+" - browsers block the microphone on plain http";
+      return;
+    }
     try {
       stream = await navigator.mediaDevices.getUserMedia({audio:{deviceId:picked?{exact:picked}:undefined, echoCancellation:false, noiseSuppression:false, autoGainControl:false, latency:0.01}});
-    } catch(e){ $("orb-sub").textContent="mic error"; return; }
+    } catch(e){ $("orb-sub").textContent="Mic blocked ("+(e&&e.name||"error")+") - allow mic access for this page"; return; }
     peer = new Peer(undefined,{host:location.hostname,port:Number(location.port||80),path:"/peerjs",secure:location.protocol==="https:",config:window.__EB_ICE&&window.__EB_ICE.length?{iceServers:window.__EB_ICE}:undefined});
     peer.on("disconnected",()=>{try{peer.reconnect()}catch{}});
     peer.on("open",(id)=>{
