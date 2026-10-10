@@ -5,7 +5,7 @@ import { Copy } from "lucide-react";
 import { Orb, type OrbState } from "./components/Orb";
 import { MetricRow } from "./components/Metrics";
 
-import { controlWsUrl, peerOptions, base } from "./lib/server";
+import { controlWsUrl, peerOptions, base, iceServers } from "./lib/server";
 
 export default function Sender() {
   const [sources, setSources] = useState<MediaDeviceInfo[]>([]);
@@ -22,6 +22,7 @@ export default function Sender() {
   const [phoneMicOn, setPhoneMicOn] = useState(false);
   const bytesRef = useRef<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const peerIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -41,21 +42,56 @@ export default function Sender() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The control channel rides the same port as signalling. Behind Render the
+  // proxy drops idle sockets (~100s) and a free instance can sleep mid-session,
+  // so this reconnects with backoff and heartbeats to stay warm.
   useEffect(() => {
-    const ws = new WebSocket(controlWsUrl());
-    wsRef.current = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ role: "sender", id: peerId ?? undefined }));
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.cmd === "stop") stop();
-      } catch {}
+    let ws: WebSocket | null = null;
+    let ping: ReturnType<typeof setInterval> | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let delay = 1000;
+    let disposed = false;
+
+    const open = () => {
+      if (disposed) return;
+      const sock = new WebSocket(controlWsUrl());
+      ws = sock;
+      sock.onopen = () => {
+        delay = 1000;
+        wsRef.current = sock;
+        sock.send(JSON.stringify({ role: "sender", id: peerIdRef.current ?? undefined }));
+        ping = setInterval(() => {
+          if (sock.readyState === 1) sock.send(JSON.stringify({ ping: Date.now() }));
+        }, 30000);
+      };
+      sock.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.cmd === "stop") stop();
+        } catch {}
+      };
+      sock.onclose = () => {
+        clearInterval(ping);
+        if (disposed) return;
+        retry = setTimeout(open, delay);
+        delay = Math.min(delay * 2, 15000);
+      };
+      sock.onerror = () => sock.close();
     };
-    return () => ws.close();
+
+    open();
+    return () => {
+      disposed = true;
+      clearInterval(ping);
+      clearTimeout(retry);
+      ws?.close();
+    };
   }, []);
 
   useEffect(() => {
-    wsRef.current?.readyState === 1 && wsRef.current.send(JSON.stringify({ role: "sender", id: peerId ?? undefined }));
+    peerIdRef.current = peerId;
+    const ws = wsRef.current;
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ role: "sender", id: peerId ?? undefined }));
   }, [peerId]);
 
   useEffect(() => {
@@ -86,7 +122,7 @@ export default function Sender() {
       });
       streamRef.current = stream;
       setStatus("connecting");
-      const peer = new Peer(peerOptions());
+      const peer = new Peer(peerOptions(await iceServers()));
       peerRef.current = peer;
       peer.on("open", (id) => {
         setPeerId(id);

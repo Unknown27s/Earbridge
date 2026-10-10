@@ -1,0 +1,37 @@
+# Render blueprint for Earbridge.
+# Deploy with:  render blueprint launch   (or New > Blueprint in the dashboard)
+#
+# Signalling + control WebSocket server. Media is peer-to-peer and never passes
+# through here, so this stays near-idle and cheap.
+
+services:
+  - type: web
+    name: earbridge
+    runtime: node
+    plan: free
+
+    # client/dist is gitignored, so the web client has to be compiled here.
+    buildCommand: npm install && npm run build:client
+    startCommand: npm start
+
+    # Serves {"ok":true,...}. Also what .github/workflows/keepalive.yml pings to
+    # stop the free instance from sleeping.
+    healthCheckPath: /healthz
+
+    envVars:
+      # Set these in the Render dashboard (sync: false = never written to git).
+      #
+      # TURN is what makes this work on hotel and office WiFi. Include a
+      # turns:...:443 entry — networks that block UDP still allow TLS on 443,
+      # and without it those are exactly the networks that fail silently.
+      #   TURN_URL=turns:turn.example.com:443?transport=tcp,turn:turn.example.com:3478?transport=udp
+      - key: TURN_URL
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false
+
+      # Optional; only needed if the signalling host differs from the public URL.
+      # - key: PUBLIC_ORIGIN
+      #   sync: false

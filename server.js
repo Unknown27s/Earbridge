@@ -3,8 +3,11 @@ const http = require("http");
 const { ExpressPeerServer } = require("peer");
 const { WebSocketServer } = require("ws");
 const path = require("path");
+const fs = require("fs");
 const os = require("os");
 const QRCode = require("qrcode");
+
+const PORT = Number(process.env.PORT) || 3000;
 
 function getLocalIP() {
   const nets = os.networkInterfaces();
@@ -16,49 +19,136 @@ function getLocalIP() {
   return "localhost";
 }
 
+// The origin peers should actually reach. Behind a proxy (Render, nginx, the
+// GitHub Codespaces port forwarder) the forwarded headers win; a pinned env var
+// wins over everything; LAN is the last resort.
+function publicOrigin(req) {
+  const configured = process.env.PUBLIC_ORIGIN || process.env.RENDER_EXTERNAL_URL;
+  if (configured) return configured.replace(/\/+$/, "");
+  if (req) {
+    const host = req.headers["x-forwarded-host"] || req.headers.host;
+    if (host) {
+      const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http")
+        .split(",")[0]
+        .trim();
+      return `${proto}://${host}`;
+    }
+  }
+  return `http://${getLocalIP()}:${PORT}`;
+}
+
+// STUN alone is enough on one LAN but not across the internet: symmetric NAT on
+// either side kills the direct path and WebRTC never connects. Configure a TURN
+// relay with TURN_URL (comma-separated) to make the cloud deployment reliable.
+const iceServers = [
+  { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+];
+if (process.env.TURN_URL) {
+  const urls = String(process.env.TURN_URL)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (urls.length) {
+    iceServers.push({
+      urls,
+      ...(process.env.TURN_USERNAME ? { username: process.env.TURN_USERNAME } : {}),
+      ...(process.env.TURN_CREDENTIAL ? { credential: process.env.TURN_CREDENTIAL } : {}),
+    });
+  }
+}
+
 const app = express();
+app.set("trust proxy", true);
 const server = http.createServer(app);
 
-const peerServer = ExpressPeerServer(server, { debug: false });
+const peerServer = ExpressPeerServer(server, {
+  debug: false,
+  proxied: true,
+  iceServers,
+});
 app.use("/peerjs", peerServer);
 
-app.use(express.static(path.join(__dirname, "client/dist")));
+const clientDist = path.join(__dirname, "client/dist");
+if (!fs.existsSync(clientDist)) {
+  console.warn(
+    `\n  WARNING: ${clientDist} is missing — sender/receiver pages will 404.\n` +
+      `  Build the client first:  cd client && npm ci && npm run build\n`
+  );
+}
+app.use(express.static(clientDist));
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/peerjs-client", express.static(path.join(__dirname, "node_modules/peerjs/dist")));
 
+let currentSenderId = null;
+
+function receiverUrl(req, id) {
+  // format=app encodes an earbridge:// deep link so the QR opens the APK.
+  // Requires <queries> in AndroidManifest.xml (Android 11+ package visibility);
+  // a scanner that cannot handle custom schemes will just do nothing, so the
+  // web form stays the default.
+  if (req.query.format === "app" && id) {
+    return `earbridge://receiver?id=${encodeURIComponent(id)}`;
+  }
+  const url = `${publicOrigin(req)}/receiver.html`;
+  return id ? `${url}?id=${encodeURIComponent(id)}` : url;
+}
+
+app.get("/healthz", (_req, res) => {
+  res.json({ ok: true, uptime: Math.round(process.uptime()), sender: currentSenderId });
+});
+
+app.get("/ice-servers", (_req, res) => {
+  res.json({ iceServers });
+});
+
 app.get("/qr.png", async (req, res) => {
-  let url = `http://${getLocalIP()}:${PORT}/receiver.html`;
-  if (req.query.id) url += `?id=${encodeURIComponent(req.query.id)}`;
-  const buf = await QRCode.toBuffer(url, { width: 300, margin: 2 });
+  const buf = await QRCode.toBuffer(receiverUrl(req, req.query.id), { width: 300, margin: 2 });
   res.type("png").send(buf);
 });
 
 app.get("/receiver-url", (req, res) => {
-  if (req.query.format === "app" && req.query.id) {
-    return res.json({ url: `earbridge://receiver?id=${encodeURIComponent(req.query.id)}` });
-  }
-  let url = `http://${getLocalIP()}:${PORT}/receiver.html`;
-  if (req.query.id) url += `?id=${encodeURIComponent(req.query.id)}`;
-  res.json({ url });
+  res.json({ url: receiverUrl(req, req.query.id) });
 });
 
-let currentSenderId = null;
-app.get("/sender-id", (req, res) => res.json({ id: currentSenderId }));
+app.get("/sender-id", (_req, res) => res.json({ id: currentSenderId }));
 
-const PORT = process.env.PORT || 3000;
-const IP = getLocalIP();
+// The control channel shares the main server's single port. Render only exposes
+// PORT, so a second listener on PORT + 1 would never be reachable from outside.
+//
+// peer registers its own ws server on this same HTTP server pinned to an exact
+// path ("/peerjs/peerjs"). ws's handleUpgrade calls abortHandshake(400) on any
+// any path mismatch, which writes a raw "HTTP/1.1 400" into the socket. If it
+// sees the /control request *after* we already completed the upgrade, that 400
+// lands inside a live WebSocket stream and corrupts the framing on both ends.
+// So claim /control first and skip peer entirely for that path.
+const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
-const wss = new WebSocketServer({ noServer: true });
-const controlServer = http.createServer();
-controlServer.on("upgrade", (req, socket, head) => {
-  if (req.url.startsWith("/control")) wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
-  else socket.destroy();
+const isControl = (req) => typeof req.url === "string" && req.url.startsWith("/control");
+
+const inherited = server.listeners("upgrade");
+server.removeAllListeners("upgrade");
+
+server.on("upgrade", (req, socket, head) => {
+  if (!isControl(req)) return;
+  wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
 });
+
+for (const listener of inherited) {
+  server.on("upgrade", (req, socket, head) => {
+    if (isControl(req)) return;
+    listener.call(server, req, socket, head);
+  });
+}
+
 let senderWs = null;
 wss.on("connection", (ws) => {
   ws.on("message", (data) => {
     let msg;
-    try { msg = JSON.parse(data); } catch { return; }
+    try {
+      msg = JSON.parse(data);
+    } catch {
+      return;
+    }
     if (msg.role === "sender") {
       senderWs = ws;
       if (msg.id) currentSenderId = msg.id;
@@ -66,18 +156,21 @@ wss.on("connection", (ws) => {
       senderWs.send(JSON.stringify(msg));
     }
     if (msg.role === "sender" && msg.cmd === "status") {
-      wss.clients.forEach((c) => { if (c !== ws && c.readyState === 1) c.send(JSON.stringify(msg)); });
+      wss.clients.forEach((c) => {
+        if (c !== ws && c.readyState === 1) c.send(JSON.stringify(msg));
+      });
     }
   });
-  ws.on("close", () => { if (ws === senderWs) senderWs = null; });
+  ws.on("close", () => {
+    if (ws === senderWs) senderWs = null;
+  });
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`\n  PC sender page:  http://localhost:${PORT}/sender.html`);
-  console.log(`  Phone receiver:  http://${IP}:${PORT}/receiver.html`);
-  console.log(`  QR code:         http://localhost:${PORT}/qr.png\n`);
-});
-
-controlServer.listen(PORT + 1, "0.0.0.0", () => {
-  console.log(`  Control WS:      ws://${IP}:${PORT + 1}/control\n`);
+  const origin = publicOrigin(null);
+  console.log(`\n  Sender page:   ${origin}/sender.html`);
+  console.log(`  Receiver page: ${origin}/receiver.html`);
+  console.log(`  Signalling:    ${origin}/peerjs`);
+  console.log(`  Control WS:    ${origin.replace(/^http/, "ws")}/control`);
+  console.log(`  TURN relay:    ${process.env.TURN_URL ? process.env.TURN_URL : "not configured (LAN / non-symmetric NAT only)"}\n`);
 });
