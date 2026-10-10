@@ -9,14 +9,40 @@ const QRCode = require("qrcode");
 
 const PORT = Number(process.env.PORT) || 3000;
 
-function getLocalIP() {
+// Virtual/container adapters that are reachable from the server but useless to
+// a phone on the same wifi. Returning one of these puts an unreachable address
+// in the QR code.
+const VIRTUAL_IFACE = /^(docker|br-|veth|virbr|vboxnet|vmnet|tun|tap|tailscale|zt|wg|lo$|ap\d|ham)/i;
+
+function localIPv4s() {
   const nets = os.networkInterfaces();
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
-      if (net.family === "IPv4" && !net.internal) return net.address;
+  const out = [];
+  for (const [name, addrs] of Object.entries(nets)) {
+    for (const a of addrs || []) {
+      if (a.family !== "IPv4" || a.internal) continue;
+      if (VIRTUAL_IFACE.test(name)) continue;
+      out.push({ name, address: a.address });
     }
   }
-  return "localhost";
+  return out;
+}
+
+// The QR code has to contain an address the phone can actually reach. With
+// several adapters up (Ethernet + wifi + docker) "first non-internal address" is
+// a coin flip, so prefer one on the same /24 as the client that is asking.
+function getLocalIP(remoteAddr) {
+  const candidates = localIPv4s();
+  if (!candidates.length) return "localhost";
+
+  if (remoteAddr) {
+    const remote = String(remoteAddr).replace(/^::ffff:/, "");
+    const sameSubnet = candidates.filter(
+      (c) => c.address.split(".").slice(0, 3).join(".") === remote.split(".").slice(0, 3).join(".")
+    );
+    if (sameSubnet.length === 1) return sameSubnet[0].address;
+    if (sameSubnet.length > 1) return sameSubnet[0].address;
+  }
+  return candidates[0].address;
 }
 
 // The origin peers should actually reach. Behind a proxy (Render, nginx, the
@@ -34,7 +60,7 @@ function publicOrigin(req) {
       return `${proto}://${host}`;
     }
   }
-  return `http://${getLocalIP()}:${PORT}`;
+  return `http://${getLocalIP(req && req.socket && req.socket.remoteAddress)}:${PORT}`;
 }
 
 // STUN alone is enough on one LAN but not across the internet: symmetric NAT on
@@ -81,6 +107,10 @@ app.use("/peerjs-client", express.static(path.join(__dirname, "node_modules/peer
 
 let currentSenderId = null;
 
+// The address the phone will dial must be reachable *from that phone*, so derive
+// it from the requesting client rather than guessing which adapter is "first".
+const clientIP = (req) => getLocalIP(req && req.socket && req.socket.remoteAddress);
+
 function receiverUrl(req, id) {
   // format=app encodes an earbridge:// deep link so the QR opens the APK.
   // Requires <queries> in AndroidManifest.xml (Android 11+ package visibility);
@@ -117,10 +147,10 @@ app.get("/sender-id", (_req, res) => res.json({ id: currentSenderId }));
 //
 // peer registers its own ws server on this same HTTP server pinned to an exact
 // path ("/peerjs/peerjs"). ws's handleUpgrade calls abortHandshake(400) on any
-// any path mismatch, which writes a raw "HTTP/1.1 400" into the socket. If it
-// sees the /control request *after* we already completed the upgrade, that 400
-// lands inside a live WebSocket stream and corrupts the framing on both ends.
-// So claim /control first and skip peer entirely for that path.
+// path mismatch, which writes a raw "HTTP/1.1 400" into the socket. If it sees
+// the /control request *after* the upgrade completed, that 400 lands inside a
+// live WebSocket stream and corrupts framing on both ends. So claim /control
+// first and skip peer entirely for that path.
 const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
 const isControl = (req) => typeof req.url === "string" && req.url.startsWith("/control");

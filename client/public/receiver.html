@@ -250,38 +250,77 @@
 <script>
 (function(){
   const $=(id)=>document.getElementById(id);
+  const fetchT=(url,ms)=>{const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);
+    return fetch(url,{signal:c.signal,cache:"no-store"}).finally(()=>clearTimeout(t));};
+  const netDetail=()=>navigator.onLine===false
+    ?"This phone has no network. Turn on WiFi or mobile data."
+    :"No response from "+base()+". Check the PC server is running and that this phone is on the SAME WiFi as the PC.";
   const getSaved=()=>{try{return localStorage.getItem("earbridge_server")||""}catch(e){return ""}};
   const norm=(u)=>{u=(u||"").trim().replace(/\/+$/,"");if(!u)return "";return /^https?:\/\//i.test(u)?u:"http://"+u};
   const base=()=>window.__EB_BASE?window.__EB_BASE():(getSaved()||location.origin);
   let peerId="", peer=null, micStream=null, micCall=null, micMode=0, volume=1;
+  let uiState="idle", lastSeenPeer="", pollTimer=null, pollBusy=false, backoff=2000;
   try{const v=Number(localStorage.getItem("earbridge_volume"));if(isFinite(v))volume=Math.min(Math.max(v,0),1);}catch(e){}
 
   function peerOpts(){const u=new URL(base());return{host:u.hostname,port:Number(u.port)||(u.protocol==="https:"?443:80),path:"/peerjs",secure:u.protocol==="https:",config:window.__EB_ICE&&window.__EB_ICE.length?{iceServers:window.__EB_ICE}:undefined};}
   function wsUrl(){const u=new URL(base());const p=u.protocol==="https:"?"wss":"ws";const port=Number(u.port)||(u.protocol==="https:"?443:80);return p+"://"+u.host+"/control";}
 
   function setUI(state,sub){
-    const map={idle:["Ready to connect","Open the sender on your PC and press Connect"],
+    uiState=state;
+    const map={idle:["Ready to connect","Open the sender on your PC and press Start Streaming"],
       connecting:["Connecting…","Talking to your PC"],live:["Receiving to Bluetooth","Direct audio stream routed via phone bridge"],
-      reconnecting:["Reconnecting…","WiFi dropped, retrying"],error:["Connection error","Check the PC and try again"]};
+      reconnecting:["Reconnecting…","Lost the stream — retrying"],
+      offline:["No network","This phone has no network. Turn on WiFi or mobile data."],
+      unreachable:["Can't reach the PC",netDetail()],
+      noPC:["Waiting for PC…","Server reachable, but the PC hasn't started streaming yet. Open sender.html on the PC and press Start Streaming."],
+      error:["Connection error","Check the PC and try again"]};
     $("status-headline").textContent=map[state][0];
     document.querySelector("main p").textContent=sub||map[state][1];
     $("orb-live-badge").style.display=state==="live"?"flex":"none";
     const btn=$("connect-btn");
-    if(state==="live"){btn.querySelector("#connect-label").textContent="Stop PC Audio";btn.classList.remove("bg-live");btn.classList.add("bg-danger");}
-    else{btn.querySelector("#connect-label").textContent=peerId?"Connect":"Waiting for PC…";btn.classList.add("bg-live");btn.classList.remove("bg-danger");}
-    btn.disabled=!peerId&&state!=="live";
+    const lbl=btn.querySelector("#connect-label");
+    if(state==="live"){lbl.textContent="Stop PC Audio";btn.classList.remove("bg-live");btn.classList.add("bg-danger");}
+    else if(state==="offline"){lbl.textContent="No network";btn.classList.add("bg-live");btn.classList.remove("bg-danger");}
+    else if(state==="unreachable"||state==="error"){lbl.textContent="Retry";btn.classList.add("bg-live");btn.classList.remove("bg-danger");}
+    else{lbl.textContent=peerId?"Connect":"Waiting for PC…";btn.classList.add("bg-live");btn.classList.remove("bg-danger");}
+    btn.disabled=(!peerId||state==="offline")&&state!=="live"&&state!=="unreachable"&&state!=="error";
   }
 
-  async function ensureBase(){
-    if(base()){try{const r=await fetch(base()+"/sender-id");if(r.ok)return true;}catch(e){}}
-    const cur=getSaved();
-    const v=prompt("PC server URL (e.g. http://192.168.1.20:3000)",cur||"");
+  async function askBase(){
+    const v=prompt("Which PC server?",getSaved()||base()||"http://192.168.1.20:3000");
     if(v&&norm(v)){try{localStorage.setItem("earbridge_server",norm(v));}catch(e){}return true;}
-    return !!base();
+    return false;
   }
 
   async function poll(){
-    try{const r=await fetch(base()+"/sender-id");const j=await r.json();if(j.id&&!peerId){peerId=j.id;$("peer-id-text").textContent="PEER ID: "+peerId.slice(0,11);if($("status-headline").textContent!=="Receiving to Bluetooth")setUI(document.querySelector("#connect-btn").disabled?"idle":"idle");}}catch(e){}
+    if(pollBusy)return;
+    pollBusy=true;
+    try{
+      if(navigator.onLine===false){setUI("offline");return;}
+      let r;
+      try{r=await fetchT(base()+"/sender-id",3000);}
+      catch(e){backoff=Math.min(backoff*2,30000);setUI("unreachable",netDetail());return;}
+      const j=await r.json();
+      backoff=2000;
+      if(j.id&&j.id!==lastSeenPeer){
+        const pcRestarted=!!lastSeenPeer&&j.id!==lastSeenPeer;
+        peerId=j.id;lastSeenPeer=j.id;
+        $("peer-id-text").textContent="PEER ID: "+peerId.slice(0,11);
+        // The PC reloads its sender page and gets a brand new PeerJS id. Reconnect
+        // instead of sitting on a dead one forever.
+        if(pcRestarted&&(uiState==="live"||uiState==="connecting")){try{peer&&peer.destroy();}catch(e){}peer=null;}
+        if(uiState!=="live")setUI("idle");
+      } else if(!j.id&&uiState!=="live"){
+        setUI("noPC");
+      }
+    }catch(e){setUI("unreachable",netDetail());}
+    finally{pollBusy=false;}
+  }
+
+  function startPolling(){
+    clearTimeout(pollTimer);
+    const tick=async()=>{await poll();pollTimer=setTimeout(tick,backoff);};
+    tick();
   }
 
   function connect(){
@@ -311,7 +350,15 @@
       });
     });
     peer.on("disconnected",()=>{try{peer.reconnect();}catch(e){}setUI("reconnecting");});
-    peer.on("error",()=>setUI("error"));
+    peer.on("error",(e)=>{
+      const t=(e&&e.type)||"";
+      const sub=(t==="peer-unavailable"||t==="unavailable-id")
+        ?"The PC closed its stream. It probably reloaded the sender page — waiting for it to come back."
+        :t==="network"||t==="socket-error"
+          ?"Could not reach the signalling server at "+base()+"."
+          :"Signalling failed ("+(t||"unknown")+").";
+      if(uiState!=="live")setUI("error",sub);
+    });
   }
 
   async function toggleMic(){
@@ -344,13 +391,27 @@
     try{
       qrScanner=new Html5Qrcode("qr-reader");
       await qrScanner.start({facingMode:"environment"},{fps:10,qrbox:250},
-        (text)=>{try{const id=new URL(text).searchParams.get("id");if(id){peerId=id;$("peer-id-text").textContent="PEER ID: "+id.slice(0,11);closeScanner();setTimeout(()=>$("connect-btn").click(),400);}}catch(e){}},
+        (text)=>{try{const u=new URL(text);const id=u.searchParams.get("id");if(id){peerId=id;lastSeenPeer=id;$("peer-id-text").textContent="PEER ID: "+id.slice(0,11);closeScanner();setTimeout(()=>$("connect-btn").click(),400);}else{setUI("error","That QR code is not an Earbridge code.");}}catch(e){setUI("error","Could not read that QR code.");}},
         ()=>{});
     }catch(e){$("scan-overlay").style.display="none";}
   }
   $("scan-btn").addEventListener("click",openScanner);
   $("scan-close").addEventListener("click",closeScanner);
-  $("connect-btn").addEventListener("click",()=>{const h=$("status-headline").textContent;if(h==="Receiving to Bluetooth")stopAll();else connect();});
+  $("connect-btn").addEventListener("click",()=>{
+    if(uiState==="live"){stopAll();return;}
+    if(uiState==="unreachable"||uiState==="error"||uiState==="offline"){
+      // Retry is the manual escape hatch: re-probe, and let the user correct the
+      // address when they are pointed at the wrong server.
+      (async()=>{
+        if(uiState!=="offline"&&!await (async()=>{try{await fetchT(base()+"/sender-id",3000);return true;}catch(e){return false;}})()){
+          if(!(await askBase()))return;
+        }
+        backoff=2000;await poll();startPolling();
+      })();
+      return;
+    }
+    connect();
+  });
   $("mic-btn").addEventListener("click",toggleMic);
   $("vol-slider").addEventListener("input",(e)=>{volume=Number(e.target.value)/100;const a=$("rx-audio");if(a)a.volume=volume;try{localStorage.setItem("earbridge_volume",String(volume));}catch(e2){}});
   $("vol-slider").value=Math.round(volume*100);
@@ -371,15 +432,19 @@
 
   (async()=>{
     try{const Cap=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;
-      if(Cap&&Cap.addListener)await Cap.addListener("appUrlOpen",(ev)=>{try{const id=new URL(ev.url).searchParams.get("id");if(id){peerId=id;$("peer-id-text").textContent="PEER ID: "+id.slice(0,11);setTimeout(()=>$("connect-btn").click(),500);}}catch(e){}});
+      if(Cap&&Cap.addListener)await Cap.addListener("appUrlOpen",(ev)=>{try{const id=new URL(ev.url).searchParams.get("id");if(id){peerId=id;lastSeenPeer=id;$("peer-id-text").textContent="PEER ID: "+id.slice(0,11);setTimeout(()=>$("connect-btn").click(),500);}}catch(e){}});
     }catch(e){}
     const q=new URLSearchParams(location.search).get("id");
-    if(q){peerId=q;$("peer-id-text").textContent="PEER ID: "+q.slice(0,11);setUI("idle");setTimeout(()=>$("connect-btn").click(),600);return;}
-    if(await ensureBase()){
-      try{$("pc-label").textContent="PC "+new URL(base()).hostname;}catch(e){}
-      setInterval(poll,2000);poll();
+    if(q){peerId=q;lastSeenPeer=q;$("peer-id-text").textContent="PEER ID: "+q.slice(0,11);setUI("idle");setTimeout(()=>$("connect-btn").click(),600);return;}
+    try{$("pc-label").textContent="PC "+new URL(base()).hostname;}catch(e){}
+    if(navigator.onLine===false)setUI("offline");
+    else{
+      try{await fetchT(base()+"/sender-id",3000);setUI("noPC");}
+      catch(e){setUI("unreachable",netDetail());}
     }
-    setUI("idle");
+    startPolling();
+    addEventListener("online",()=>{backoff=2000;startPolling();});
+    addEventListener("offline",()=>{if(uiState!=="live")setUI("offline");});
   })();
 })();
 </script>
