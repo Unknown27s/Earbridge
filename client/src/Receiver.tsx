@@ -4,7 +4,7 @@ import { Bluetooth, Volume2, Ear, Copy, Mic, MicOff, VolumeX } from "lucide-reac
 import { Drawer } from "vaul";
 import { Orb, type OrbState } from "./components/Orb";
 
-import { controlWsUrl, peerOptions, abs, getServerBase, setServerBase, getSavedServers, pushSavedServer } from "./lib/server";
+import { controlWsUrl, peerOptions, abs, getServerBase, setServerBase, getSavedServers, pushSavedServer, iceServers } from "./lib/server";
 
 function MicMeter({ stream, muted }: { stream: MediaStream | null; muted: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -126,9 +126,9 @@ export default function Receiver() {
     setSavedServers(getSavedServers());
   }
 
-  function connect() {
+  async function connect() {
     setStatus("connecting");
-    const peer = new Peer(peerOptions());
+    const peer = new Peer(peerOptions(await iceServers()));
     peerRef.current = peer;
     peer.on("open", () => {
       const conn = peer.connect(peerId);
@@ -193,7 +193,13 @@ export default function Receiver() {
   }
 
   function stopPc() {
-    try { new WebSocket(controlWsUrl()).send(JSON.stringify({ cmd: "stop" })); } catch {}
+    // send() on a CONNECTING socket throws InvalidStateError; wait for open or
+    // the "Stop PC Audio" command silently never reaches the sender.
+    try {
+      const ws = new WebSocket(controlWsUrl());
+      ws.onopen = () => ws.send(JSON.stringify({ cmd: "stop" }));
+    } catch {}
+
     micCallRef.current?.close();
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
     micStreamRef.current = null;

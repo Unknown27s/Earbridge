@@ -68,7 +68,7 @@
     .wave-bar-7 { animation: wave-bounce 1.15s ease-in-out infinite 0.35s; }
   </style>
 <link rel="icon" type="image/png" href="/earbridge-logo.png"/>
-</head>
+<script>window.__EB_ICE=null;fetch("/ice-servers",{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.iceServers)window.__EB_ICE=j.iceServers}).catch(function(){});</script></head>
 <body class="bg-[#0d0d12] text-neutral-200 font-body antialiased min-h-screen flex flex-col justify-between selection:bg-[#4ade80]/20 selection:text-[#4ade80] relative overflow-x-hidden">
 <!-- Ambient glowing backdrop lighting -->
 <div class="fixed inset-0 pointer-events-none z-0 overflow-hidden">
@@ -356,7 +356,7 @@
   let stream=null, call=null, peer=null, startedAt=null, upTimer=null, bytesPrev=null;
   window._peerId = null;
 
-  const controlWs = new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.hostname+":"+(Number(location.port||80)+1)+"/control");
+  const controlWs = new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/control");
   controlWs.onopen = () => controlWs.send(JSON.stringify({role:"sender", id: window._peerId||undefined}));
   controlWs.onmessage = (e) => { try { const m=JSON.parse(e.data); if(m.cmd==="stop"&&stream) toggle(false); } catch{} };
 
@@ -393,7 +393,7 @@
     try {
       stream = await navigator.mediaDevices.getUserMedia({audio:{deviceId:picked?{exact:picked}:undefined, echoCancellation:false, noiseSuppression:false, autoGainControl:false, latency:0.01}});
     } catch(e){ $("orb-sub").textContent="mic error"; return; }
-    peer = new Peer(undefined,{host:location.hostname,port:Number(location.port||80),path:"/peerjs",secure:location.protocol==="https:"});
+    peer = new Peer(undefined,{host:location.hostname,port:Number(location.port||80),path:"/peerjs",secure:location.protocol==="https:",config:window.__EB_ICE&&window.__EB_ICE.length?{iceServers:window.__EB_ICE}:undefined});
     peer.on("disconnected",()=>{try{peer.reconnect()}catch{}});
     peer.on("open",(id)=>{
       window._peerId=id;

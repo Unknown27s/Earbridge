@@ -18,8 +18,14 @@ jobs:
       - name: Install root deps (Capacitor CLI)
         run: npm install
 
+      # Baked into receiver.html so the APK can reach the hosted signalling
+      # server. Inside the Capacitor WebView location.origin is always
+      # https://localhost, so without this the app cannot connect to anything
+      # but a manually-entered server. Leave unset for a LAN-only APK.
       - name: Build web client
         working-directory: client
+        env:
+          EARBRIDGE_SERVER: ${{ vars.EARBRIDGE_SERVER }}
         run: |
           npm ci || npm install
           npm run build

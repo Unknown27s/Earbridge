@@ -1,0 +1,32 @@
+name: Keep Render Warm
+
+# Render free instances sleep after 15 minutes without inbound traffic, which
+# costs a ~30-50s cold start on the next connection. This pings /healthz every
+# 10 minutes so the instance stays awake (720 of the 750 free instance-hours/mo).
+# Set repo secret RENDER_PING_URL to https://<your-service>.onrender.com.
+#
+# Note: GitHub disables scheduled workflows on repos with no activity for 60
+# days. If the instance sleeps, ping it once manually via workflow_dispatch.
+# A paid Starter instance needs none of this.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        env:
+          RENDER_PING_URL: ${{ secrets.RENDER_PING_URL }}
+        run: |
+          if [ -z "$RENDER_PING_URL" ]; then
+            echo "RENDER_PING_URL secret not set — skipping."
+            exit 0
+          fi
+          curl -fsS -o /dev/null \
+            --max-time 90 \
+            -w "healthz HTTP %{http_code} in %{time_total}s\n" \
+            "$RENDER_PING_URL/healthz"

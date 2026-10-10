@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Android 11+ (package visibility) hides this app from other apps unless
+         it is declared here. Without this the browser/gallery cannot resolve
+         earbridge:// deep links to it, so scanning the app-format QR silently
+         falls back to a browser instead of opening Earbridge. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="earbridge" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
@@ -50,4 +61,16 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Phone-as-mic. Capacitor's BridgeWebChromeClient.onPermissionRequest
+         requests exactly these two when the page asks for AUDIO_CAPTURE; if
+         they are not declared here the launch is denied and getUserMedia()
+         rejects, so the talkback toggle silently does nothing. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- Route playback to a paired headset. Android 12+ requires BLUETOOTH_CONNECT
+         for BT queries; audio *output routing* to an already-paired A2DP device
+         does not require it, so this is deliberately omitted. Add it (plus a
+         runtime prompt) only if you later enumerate devices in-app. -->
 </manifest>

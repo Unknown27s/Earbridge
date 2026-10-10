@@ -92,7 +92,7 @@
     }
   </style>
   <link rel="icon" type="image/png" href="./earbridge-logo.png"/>
-</head>
+<meta name="earbridge-server" content=""><script>window.__EB_BASE=function(){var s="";try{s=localStorage.getItem("earbridge_server")||""}catch(e){}if(!s){try{var m=document.querySelector('meta[name="earbridge-server"]');s=m?(m.content||"").trim():""}catch(e){}}return s||location.origin;};window.__EB_ICE=null;fetch(window.__EB_BASE()+"/ice-servers",{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.iceServers)window.__EB_ICE=j.iceServers}).catch(function(){});</script></head>
 <body class="bg-base text-on-surface font-body antialiased min-h-screen flex flex-col justify-between select-none overflow-x-hidden p-0 m-0">
 <!-- Top Shared App Bar Anchored to JSON specification -->
 <header class="flex justify-between items-center w-full px-5 py-4 fixed top-0 left-0 z-50 bg-transparent">
@@ -252,12 +252,12 @@
   const $=(id)=>document.getElementById(id);
   const getSaved=()=>{try{return localStorage.getItem("earbridge_server")||""}catch(e){return ""}};
   const norm=(u)=>{u=(u||"").trim().replace(/\/+$/,"");if(!u)return "";return /^https?:\/\//i.test(u)?u:"http://"+u};
-  const base=()=>getSaved()||(location.protocol.indexOf("http")===0?location.origin:"");
+  const base=()=>window.__EB_BASE?window.__EB_BASE():(getSaved()||location.origin);
   let peerId="", peer=null, micStream=null, micCall=null, micMode=0, volume=1;
   try{const v=Number(localStorage.getItem("earbridge_volume"));if(isFinite(v))volume=Math.min(Math.max(v,0),1);}catch(e){}
 
-  function peerOpts(){const u=new URL(base());return{host:u.hostname,port:Number(u.port)||(u.protocol==="https:"?443:80),path:"/peerjs",secure:u.protocol==="https:"};}
-  function wsUrl(){const u=new URL(base());const p=u.protocol==="https:"?"wss":"ws";const port=Number(u.port)||(u.protocol==="https:"?443:80);return p+"://"+u.hostname+":"+(port+1)+"/control";}
+  function peerOpts(){const u=new URL(base());return{host:u.hostname,port:Number(u.port)||(u.protocol==="https:"?443:80),path:"/peerjs",secure:u.protocol==="https:",config:window.__EB_ICE&&window.__EB_ICE.length?{iceServers:window.__EB_ICE}:undefined};}
+  function wsUrl(){const u=new URL(base());const p=u.protocol==="https:"?"wss":"ws";const port=Number(u.port)||(u.protocol==="https:"?443:80);return p+"://"+u.host+"/control";}
 
   function setUI(state,sub){
     const map={idle:["Ready to connect","Open the sender on your PC and press Connect"],
@@ -317,8 +317,8 @@
   async function toggleMic(){
     const b=$("mic-btn");
     if(micMode===0){
-      try{micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});}catch(e){return;}
-      if(!peer)return;
+      try{micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}});}catch(e){b.textContent="🎤 Mic blocked";setTimeout(function(){if(micMode===0)b.textContent="🎤 Mic: OFF";},2500);return;}
+      if(!peer){micStream.getTracks().forEach(function(t){t.stop();});micStream=null;return;}
       micCall=peer.call(peerId,micStream);micMode=1;b.textContent="🎤 Mic: ON";
     }else if(micMode===1){
       micStream.getAudioTracks().forEach(t=>t.enabled=false);micMode=2;b.textContent="🎤 Mic: MUTED";
